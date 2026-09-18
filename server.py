@@ -3,6 +3,7 @@ import argparse
 import datetime
 import http.server
 import json
+import mimetypes
 import os
 import socket
 import subprocess
@@ -15,7 +16,6 @@ DOWNLOADS_DIR = os.path.expanduser('~/Downloads/ClipboardShare')
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # 連接外部地址以確定路由出口 IP（不實際發送封包）
         s.connect(('8.8.8.8', 80))
         ip = s.getsockname()[0]
     except Exception:
@@ -68,6 +68,30 @@ def copy_image_to_macos_clipboard(image_bytes: bytes, mime_type: str = 'image/pn
     subprocess.run(['osascript', '-e', script], check=True)
     return save_path
 
+def get_latest_received_image():
+    if not os.path.exists(DOWNLOADS_DIR):
+        return None
+    valid_exts = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+    files = [
+        f for f in os.listdir(DOWNLOADS_DIR)
+        if os.path.splitext(f)[1].lower() in valid_exts and not f.startswith('.')
+    ]
+    if not files:
+        return None
+    files.sort(key=lambda x: os.path.getmtime(os.path.join(DOWNLOADS_DIR, x)), reverse=True)
+    latest = files[0]
+    full_path = os.path.join(DOWNLOADS_DIR, latest)
+    stat = os.stat(full_path)
+    size_kb = stat.st_size / 1024
+    size_str = f"{size_kb / 1024:.2f} MB" if size_kb > 1024 else f"{size_kb:.1f} KB"
+    mtime_str = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%H:%M:%S')
+    return {
+        "filename": latest,
+        "url": f"/images/{latest}",
+        "size": size_str,
+        "mtime": mtime_str
+    }
+
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -98,14 +122,14 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .container {
       width: 100%;
-      max-width: 540px;
+      max-width: 560px;
       display: flex;
       flex-direction: column;
       gap: 16px;
     }
     .header {
       text-align: center;
-      padding: 8px 0;
+      padding: 6px 0;
     }
     .header h1 {
       font-size: 1.25rem;
@@ -135,13 +159,13 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     textarea {
       width: 100%;
-      height: 120px;
+      height: 100px;
       background: #0b1120;
       border: 1px solid var(--border);
       border-radius: 8px;
       color: var(--text);
       padding: 12px;
-      font-size: 15px;
+      font-size: 14px;
       resize: vertical;
       outline: none;
       font-family: inherit;
@@ -159,7 +183,7 @@ HTML_PAGE = """<!DOCTYPE html>
       color: #fff;
       border: none;
       border-radius: 8px;
-      padding: 12px;
+      padding: 10px 14px;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
@@ -189,14 +213,14 @@ HTML_PAGE = """<!DOCTYPE html>
     .dropzone {
       border: 2px dashed var(--border);
       border-radius: 8px;
-      padding: 20px 16px;
+      padding: 18px 16px;
       text-align: center;
       background: #0b1120;
       cursor: pointer;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       transition: border-color 0.2s, background 0.2s;
     }
     .dropzone.dragover {
@@ -215,7 +239,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .preview-box img {
       max-width: 100%;
-      max-height: 220px;
+      max-height: 200px;
       object-fit: contain;
       border-radius: 6px;
     }
@@ -225,6 +249,24 @@ HTML_PAGE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       width: 100%;
+    }
+    .received-img-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      background: #0b1120;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .received-img-box img {
+      max-width: 100%;
+      max-height: 240px;
+      object-fit: contain;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
     }
     .toast {
       position: fixed;
@@ -256,8 +298,8 @@ HTML_PAGE = """<!DOCTYPE html>
       gap: 8px;
     }
     .qr-box img {
-      width: 150px;
-      height: 150px;
+      width: 140px;
+      height: 140px;
       border-radius: 8px;
       background: #fff;
       padding: 6px;
@@ -288,18 +330,37 @@ HTML_PAGE = """<!DOCTYPE html>
     <p>文字 & 圖片雙向同步至 Mac 原生剪貼簿</p>
   </div>
 
+  <!-- 最新接收到的圖片卡片 (Mac & 手機皆可即時看到) -->
+  <div class="card" id="cardLatestImg" style="display: none; border-color: #0284c7;">
+    <div class="card-title">
+      <span>🖼️ 最新接收的圖片</span>
+      <span class="badge" style="background: #10b981;">已進入 Mac 剪貼簿</span>
+    </div>
+    <div class="received-img-box">
+      <img id="receivedImg" alt="最新圖片" title="點擊檢視原圖" />
+      <div class="preview-info">
+        <span id="receivedName" style="font-weight: 600; color: #38bdf8;"></span>
+        <span id="receivedMeta"></span>
+      </div>
+      <div class="btn-group" style="width: 100%;">
+        <button type="button" class="secondary" id="btnOpenFinder">📂 在 Finder 開啟</button>
+        <button type="button" id="btnViewFull">🔍 查看大圖</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 圖片傳送至 Mac -->
   <div class="card">
     <div class="card-title">
-      <span>🖼️ 傳送圖片至 Mac</span>
-      <span class="badge">Cmd + V 貼圖 / 自動存檔</span>
+      <span>📤 傳送圖片至 Mac</span>
+      <span class="badge">Cmd + V 貼圖</span>
     </div>
     
     <input type="file" id="fileInput" accept="image/*" style="display: none;">
 
     <div class="dropzone" id="dropzone">
-      <div style="font-size: 2rem;">📷</div>
-      <div style="font-size: 14px; font-weight: 500;">點擊選擇相片、拍照或直接長按貼上</div>
+      <div style="font-size: 1.8rem;">📷</div>
+      <div style="font-size: 14px; font-weight: 500;">點擊選擇相片、拍照或長按貼上</div>
       <div style="font-size: 12px; color: var(--subtext);">支援 JPG、PNG、WebP、GIF、截圖等</div>
     </div>
 
@@ -310,7 +371,7 @@ HTML_PAGE = """<!DOCTYPE html>
         <span id="previewSize"></span>
       </div>
       <div class="btn-group" style="width: 100%;">
-        <button type="button" class="danger" style="flex: 0 0 80px;" id="btnCancelImg">清除</button>
+        <button type="button" class="danger" style="flex: 0 0 70px;" id="btnCancelImg">清除</button>
         <button type="button" id="btnSendImg">🚀 送圖片到 Mac</button>
       </div>
     </div>
@@ -332,10 +393,10 @@ HTML_PAGE = """<!DOCTYPE html>
   <!-- 從 Mac 讀取目前文字剪貼簿 -->
   <div class="card">
     <div class="card-title">
-      <span>💻 Mac 剪貼簿內容</span>
+      <span>💻 Mac 目前文字剪貼簿</span>
       <button type="button" class="secondary" style="flex: 0; padding: 4px 10px; font-size: 12px;" id="btnRefresh">🔄 重新整理</button>
     </div>
-    <textarea id="textFromMac" readonly placeholder="點擊重新整理以讀取 Mac 剪貼簿目前內容..."></textarea>
+    <textarea id="textFromMac" readonly placeholder="點擊重新整理或等待自動同步 Mac 剪貼簿..."></textarea>
     <button type="button" class="secondary" id="btnCopyFromMac">📄 複製到本裝置</button>
   </div>
 
@@ -355,6 +416,7 @@ HTML_PAGE = """<!DOCTYPE html>
   document.getElementById('qrImage').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(fullUrl);
 
   let currentImageFile = null;
+  let lastImageFilename = '';
 
   function showToast(msg, bg = '#059669') {
     const toast = document.getElementById('toast');
@@ -449,6 +511,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (data.ok) {
         showToast('✅ 圖片已寫入 Mac 剪貼簿！(可直接 Cmd+V)');
         btnCancelImg.click();
+        fetchLatestImage();
       } else {
         showToast('❌ 傳送失敗: ' + (data.error || '未知錯誤'), '#e11d48');
       }
@@ -457,6 +520,49 @@ HTML_PAGE = """<!DOCTYPE html>
     } finally {
       btnSendImg.disabled = false;
       btnSendImg.innerText = '🚀 送圖片到 Mac';
+    }
+  });
+
+  // --- 最新接收圖片展示邏輯 ---
+  const cardLatestImg = document.getElementById('cardLatestImg');
+  const receivedImg = document.getElementById('receivedImg');
+  const receivedName = document.getElementById('receivedName');
+  const receivedMeta = document.getElementById('receivedMeta');
+  const btnViewFull = document.getElementById('btnViewFull');
+  const btnOpenFinder = document.getElementById('btnOpenFinder');
+
+  async function fetchLatestImage() {
+    try {
+      const res = await fetch('/api/latest-image');
+      const data = await res.json();
+      if (data.exists) {
+        if (data.filename !== lastImageFilename) {
+          lastImageFilename = data.filename;
+          receivedImg.src = data.url;
+          receivedName.innerText = data.filename;
+          receivedMeta.innerText = `${data.size} (${data.mtime})`;
+          cardLatestImg.style.display = 'flex';
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  receivedImg.addEventListener('click', () => {
+    if (receivedImg.src) window.open(receivedImg.src, '_blank');
+  });
+
+  btnViewFull.addEventListener('click', () => {
+    if (receivedImg.src) window.open(receivedImg.src, '_blank');
+  });
+
+  btnOpenFinder.addEventListener('click', async () => {
+    try {
+      await fetch('/api/open-finder', { method: 'POST' });
+      showToast('📂 已在 Mac 打開 Finder 資料夾');
+    } catch (e) {
+      showToast('開啟失敗', '#e11d48');
     }
   });
 
@@ -505,7 +611,9 @@ HTML_PAGE = """<!DOCTYPE html>
     try {
       const res = await fetch('/api/clipboard');
       const data = await res.json();
-      document.getElementById('textFromMac').value = data.content || '';
+      if (data.content !== undefined) {
+        document.getElementById('textFromMac').value = data.content || '';
+      }
     } catch (err) {
       console.error(err);
     }
@@ -513,7 +621,8 @@ HTML_PAGE = """<!DOCTYPE html>
 
   document.getElementById('btnRefresh').addEventListener('click', () => {
     fetchMacClipboard();
-    showToast('已刷新 Mac 剪貼簿文字');
+    fetchLatestImage();
+    showToast('已刷新 Mac 狀態');
   });
 
   document.getElementById('btnCopyFromMac').addEventListener('click', async () => {
@@ -527,8 +636,14 @@ HTML_PAGE = """<!DOCTYPE html>
     }
   });
 
-  // 初次載入自動拉取一次
+  // 初次載入
   fetchMacClipboard();
+  fetchLatestImage();
+
+  // 自動每 2.5 秒輪詢更新最新圖片與文字狀態（免手動重新整理）
+  setInterval(() => {
+    fetchLatestImage();
+  }, 2500);
 </script>
 
 </body>
@@ -537,7 +652,6 @@ HTML_PAGE = """<!DOCTYPE html>
 
 class ClipboardHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # 覆寫日誌輸出以保持終端乾淨
         print(f"[HTTP] {self.command} {self.path} -> {args[1]}")
 
     def do_GET(self):
@@ -553,6 +667,36 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             self.wfile.write(res_data)
+        elif self.path == '/api/latest-image':
+            latest = get_latest_received_image()
+            if latest:
+                res = {"exists": True, **latest}
+            else:
+                res = {"exists": False}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode('utf-8'))
+        elif self.path.startswith('/images/'):
+            filename = os.path.basename(unquote(self.path[len('/images/'):]))
+            file_path = os.path.join(DOWNLOADS_DIR, filename)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                mime_type, _ = mimetypes.guess_type(file_path)
+                mime_type = mime_type or 'application/octet-stream'
+                try:
+                    with open(file_path, 'rb') as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', mime_type)
+                    self.send_header('Content-Length', str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+                except Exception as e:
+                    self.send_response(500)
+                    self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
@@ -604,6 +748,20 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
                 }).encode('utf-8'))
             except Exception as e:
                 print(f"❌ 圖片處理失敗: {e}")
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps({'ok': False, 'error': str(e)}).encode('utf-8'))
+        
+        elif self.path == '/api/open-finder':
+            try:
+                os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+                subprocess.run(['open', DOWNLOADS_DIR], check=False)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps({'ok': True}).encode('utf-8'))
+            except Exception as e:
                 self.send_response(500)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.end_headers()
