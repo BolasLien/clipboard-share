@@ -290,6 +290,15 @@ HTML_PAGE = """<!DOCTYPE html>
       background-color: #7f1d1d;
       color: #fecaca;
     }
+    button.btn-sm {
+      flex: 0 0 auto !important;
+      width: auto !important;
+      white-space: nowrap !important;
+      padding: 5px 12px !important;
+      font-size: 12px !important;
+      border-radius: 6px !important;
+      line-height: 1.2 !important;
+    }
     button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -510,7 +519,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="card">
         <div class="card-title">
           <span>💻 Mac 目前文字剪貼簿</span>
-          <button type="button" class="secondary" style="flex: 0; padding: 4px 10px; font-size: 12px;" id="btnRefresh">🔄 重新整理</button>
+          <button type="button" class="secondary btn-sm" id="btnRefresh">🔄 重新整理</button>
         </div>
         <textarea id="textFromMac" readonly placeholder="點擊重新整理或等待自動同步 Mac 剪貼簿..."></textarea>
         <button type="button" class="secondary" id="btnCopyFromMac">📄 複製到本裝置</button>
