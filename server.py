@@ -541,10 +541,12 @@ HTML_PAGE = """<!DOCTYPE html>
 <div class="toast" id="toast"></div>
 
 <script>
-  const fullUrl = window.location.origin;
-  document.getElementById('currentUrl').innerText = fullUrl;
-  document.getElementById('ipInfo').innerText = `連線網址: ${fullUrl}`;
-  document.getElementById('qrImage').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(fullUrl);
+  const serverLanUrl = '__LAN_URL__';
+  // 無論電腦從 localhost 或 127.0.0.1 開啟，QR Code 一律指向實際區域網路 IP，確保手機掃碼成功
+  const targetUrl = serverLanUrl || window.location.origin;
+  document.getElementById('currentUrl').innerText = targetUrl;
+  document.getElementById('ipInfo').innerText = `連線網址: ${targetUrl}`;
+  document.getElementById('qrImage').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(targetUrl);
 
   let currentImageFile = null;
   let lastImageFilename = '';
@@ -787,10 +789,15 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/' or self.path.startswith('/?'):
+            local_ip = get_local_ip()
+            port = self.server.server_address[1]
+            lan_url = f"http://{local_ip}:{port}"
+            rendered_html = HTML_PAGE.replace('__LAN_URL__', lan_url)
+
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.end_headers()
-            self.wfile.write(HTML_PAGE.encode('utf-8'))
+            self.wfile.write(rendered_html.encode('utf-8'))
         elif self.path == '/api/clipboard':
             clip_content = get_macos_clipboard()
             res_data = json.dumps({'content': clip_content}).encode('utf-8')
