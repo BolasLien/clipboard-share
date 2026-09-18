@@ -30,3 +30,4 @@ Thumbs.db
 # Logs & Temporary
 *.log
 .scratch/
+.playwright-mcp/
