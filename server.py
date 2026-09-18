@@ -92,7 +92,7 @@ def copy_image_to_macos_clipboard(image_bytes: bytes) -> str:
         script = f'set the clipboard to (read (POSIX file "{tmp_png}") as «class PNGf»)'
         subprocess.run(['osascript', '-e', script], check=True)
     except Exception as e:
-        print(f"⚠️ 寫入剪貼簿警報: {e}")
+        print(f"[警告] 寫入剪貼簿失敗: {e}")
 
     return save_path
 
@@ -126,15 +126,15 @@ HTML_PAGE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>跨裝置剪貼簿同步 (文字 & 圖片)</title>
+  <title>Clipboard Share - 跨裝置剪貼簿同步</title>
   <style>
     :root {
       --bg: #0f172a;
       --card-bg: #1e293b;
       --text: #f8fafc;
       --subtext: #94a3b8;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
       --success: #10b981;
       --border: #334155;
       --danger: #ef4444;
@@ -143,10 +143,10 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: var(--bg);
       color: var(--text);
-      padding: 16px;
+      padding: 20px 16px;
       display: flex;
       justify-content: center;
       min-height: 100vh;
@@ -156,20 +156,19 @@ HTML_PAGE = """<!DOCTYPE html>
       max-width: 1060px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
     }
     .header {
       text-align: center;
-      padding: 6px 0 12px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
     }
     .header h1 {
-      font-size: 1.35rem;
+      font-size: 1.4rem;
       font-weight: 700;
-      letter-spacing: -0.025em;
+      letter-spacing: -0.02em;
     }
     .status-badge {
       display: inline-flex;
@@ -189,7 +188,6 @@ HTML_PAGE = """<!DOCTYPE html>
       border-radius: 50%;
     }
 
-    /* 佈局容器：桌面雙欄 (發送 | 接收)，手機單欄 (發送 上，接收 下) */
     .columns-container {
       display: grid;
       grid-template-columns: 1fr;
@@ -212,15 +210,14 @@ HTML_PAGE = """<!DOCTYPE html>
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-bottom: 4px;
+      padding-bottom: 6px;
       border-bottom: 2px solid var(--border);
     }
     .section-title {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
     }
     .title-send { color: var(--send-accent); }
     .title-recv { color: var(--recv-accent); }
@@ -228,7 +225,7 @@ HTML_PAGE = """<!DOCTYPE html>
     .card {
       background-color: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       padding: 16px;
       display: flex;
       flex-direction: column;
@@ -240,13 +237,14 @@ HTML_PAGE = """<!DOCTYPE html>
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 8px;
     }
     textarea {
       width: 100%;
-      height: 105px;
+      height: 110px;
       background: #0b1120;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 6px;
       color: var(--text);
       padding: 12px;
       font-size: 14px;
@@ -266,7 +264,7 @@ HTML_PAGE = """<!DOCTYPE html>
       background-color: var(--primary);
       color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 6px;
       padding: 10px 14px;
       font-size: 14px;
       font-weight: 600;
@@ -275,10 +273,13 @@ HTML_PAGE = """<!DOCTYPE html>
       align-items: center;
       justify-content: center;
       gap: 6px;
-      transition: background 0.15s, transform 0.1s;
+      transition: background 0.15s;
+    }
+    button:hover {
+      background-color: var(--primary-hover);
     }
     button:active {
-      transform: scale(0.98);
+      transform: scale(0.99);
     }
     button.secondary {
       background-color: #334155;
@@ -294,7 +295,7 @@ HTML_PAGE = """<!DOCTYPE html>
       flex: 0 0 auto !important;
       width: auto !important;
       white-space: nowrap !important;
-      padding: 5px 12px !important;
+      padding: 4px 10px !important;
       font-size: 12px !important;
       border-radius: 6px !important;
       line-height: 1.2 !important;
@@ -306,7 +307,7 @@ HTML_PAGE = """<!DOCTYPE html>
     .dropzone {
       border: 2px dashed var(--border);
       border-radius: 8px;
-      padding: 20px 16px;
+      padding: 24px 16px;
       text-align: center;
       background: #0b1120;
       cursor: pointer;
@@ -315,6 +316,9 @@ HTML_PAGE = """<!DOCTYPE html>
       align-items: center;
       gap: 6px;
       transition: border-color 0.2s, background 0.2s;
+    }
+    .dropzone:hover {
+      border-color: var(--send-accent);
     }
     .dropzone.dragover {
       border-color: var(--primary);
@@ -327,14 +331,14 @@ HTML_PAGE = """<!DOCTYPE html>
       align-items: center;
       background: #0b1120;
       padding: 12px;
-      border-radius: 8px;
+      border-radius: 6px;
       border: 1px solid var(--border);
     }
     .preview-box img {
       max-width: 100%;
       max-height: 200px;
       object-fit: contain;
-      border-radius: 6px;
+      border-radius: 4px;
     }
     .preview-info {
       font-size: 12px;
@@ -350,16 +354,16 @@ HTML_PAGE = """<!DOCTYPE html>
       gap: 10px;
       background: #0b1120;
       padding: 12px;
-      border-radius: 8px;
+      border-radius: 6px;
       border: 1px solid var(--border);
     }
     .received-img-box img {
       max-width: 100%;
       max-height: 240px;
       object-fit: contain;
-      border-radius: 6px;
+      border-radius: 4px;
       cursor: pointer;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
     }
     .toast {
       position: fixed;
@@ -384,40 +388,40 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .qr-card {
       text-align: center;
-      padding: 12px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       background: #1e293b;
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
     }
     .qr-card img {
       width: 130px;
       height: 130px;
-      border-radius: 8px;
+      border-radius: 6px;
       background: #fff;
-      padding: 5px;
+      padding: 6px;
     }
     .badge {
       font-size: 11px;
       background: #0284c7;
       color: #fff;
       padding: 2px 8px;
-      border-radius: 9999px;
+      border-radius: 4px;
+      font-weight: 500;
     }
     .code-block {
       background: #0b1120;
       padding: 6px 12px;
-      border-radius: 6px;
-      font-family: monospace;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12px;
       color: #38bdf8;
       word-break: break-all;
     }
 
-    /* 手機端專屬隱藏 */
     @media (max-width: 859px) {
       .desktop-only {
         display: none !important;
@@ -428,37 +432,34 @@ HTML_PAGE = """<!DOCTYPE html>
 <body>
 
 <div class="main-wrapper">
-  <!-- 頂部資訊 -->
   <div class="header">
-    <h1>📋 跨裝置剪貼簿同步</h1>
+    <h1>Clipboard Share</h1>
     <div class="status-badge">
       <span class="status-dot"></span>
-      <span id="ipInfo">區域網路直連中</span>
+      <span id="ipInfo">連線就緒</span>
     </div>
   </div>
 
-  <!-- 雙欄/單欄容器 -->
   <div class="columns-container">
 
-    <!-- ==================== 【📤 發送區 (Send)】 ==================== -->
+    <!-- 發送區 -->
     <div class="section-column" id="colSend">
       <div class="section-header">
-        <span class="section-title title-send">📤 發送 (Send to Mac)</span>
-        <span class="badge">直接進 Mac 剪貼簿</span>
+        <span class="section-title title-send">發送端 (Send to Mac)</span>
+        <span class="badge">同步至剪貼簿</span>
       </div>
 
-      <!-- 圖片發送卡片 -->
+      <!-- 圖片傳送 -->
       <div class="card">
         <div class="card-title">
-          <span>🖼️ 傳送圖片</span>
-          <span style="font-size: 12px; color: var(--subtext);">Cmd + V 貼圖</span>
+          <span>傳送圖片</span>
+          <span style="font-size: 12px; color: var(--subtext);">Mac 任意處 Cmd + V 貼圖</span>
         </div>
         
         <input type="file" id="fileInput" accept="image/*" style="display: none;">
 
         <div class="dropzone" id="dropzone">
-          <div style="font-size: 1.8rem;">📷</div>
-          <div style="font-size: 14px; font-weight: 500;">點擊選擇相片、拍照或貼上截圖</div>
+          <div style="font-size: 14px; font-weight: 600;">選擇相片、拍照或貼上截圖</div>
           <div style="font-size: 12px; color: var(--subtext);">支援 JPG、PNG、HEIC、WebP、GIF</div>
         </div>
 
@@ -470,36 +471,36 @@ HTML_PAGE = """<!DOCTYPE html>
           </div>
           <div class="btn-group" style="width: 100%;">
             <button type="button" class="danger" style="flex: 0 0 70px;" id="btnCancelImg">清除</button>
-            <button type="button" id="btnSendImg">🚀 送圖片到 Mac</button>
+            <button type="button" id="btnSendImg">傳送圖片至 Mac</button>
           </div>
         </div>
       </div>
 
-      <!-- 文字發送卡片 -->
+      <!-- 文字傳送 -->
       <div class="card">
         <div class="card-title">
-          <span>📝 傳送文字</span>
+          <span>傳送文字</span>
           <span style="font-size: 12px; color: var(--subtext);">同步至 pbcopy</span>
         </div>
         <textarea id="textToSend" placeholder="在此輸入文字，或長按貼上..."></textarea>
         <div class="btn-group">
-          <button type="button" class="secondary" id="btnPasteText">📋 貼上</button>
-          <button type="button" id="btnSendText">🚀 送文字到 Mac</button>
+          <button type="button" class="secondary" id="btnPasteText">讀取貼上</button>
+          <button type="button" id="btnSendText">傳送文字至 Mac</button>
         </div>
       </div>
     </div>
 
-    <!-- ==================== 【📥 接收區 (Receive)】 ==================== -->
+    <!-- 接收區 -->
     <div class="section-column" id="colRecv">
       <div class="section-header">
-        <span class="section-title title-recv">📥 接收 (Received on Mac)</span>
-        <span class="badge" style="background: #10b981;">即時同步中</span>
+        <span class="section-title title-recv">接收端 (Received on Mac)</span>
+        <span class="badge" style="background: #10b981;">即時更新</span>
       </div>
 
-      <!-- 最新接收到的圖片卡片 -->
+      <!-- 最新接收圖片 -->
       <div class="card" id="cardLatestImg" style="display: none; border-color: #0284c7;">
         <div class="card-title">
-          <span>🖼️ 最新接收的圖片</span>
+          <span>最新接收圖片</span>
           <span class="badge" style="background: #10b981;">已在 Mac 剪貼簿</span>
         </div>
         <div class="received-img-box">
@@ -509,25 +510,25 @@ HTML_PAGE = """<!DOCTYPE html>
             <span id="receivedMeta"></span>
           </div>
           <div class="btn-group" style="width: 100%;">
-            <button type="button" class="secondary desktop-only" id="btnOpenFinder">📂 在 Finder 開啟</button>
-            <button type="button" id="btnViewFull">🔍 查看原圖</button>
+            <button type="button" class="secondary desktop-only" id="btnOpenFinder">在 Finder 中開啟</button>
+            <button type="button" id="btnViewFull">檢視原圖</button>
           </div>
         </div>
       </div>
 
-      <!-- 從 Mac 讀取目前文字剪貼簿 -->
+      <!-- Mac 剪貼簿文字 -->
       <div class="card">
         <div class="card-title">
-          <span>💻 Mac 目前文字剪貼簿</span>
-          <button type="button" class="secondary btn-sm" id="btnRefresh">🔄 重新整理</button>
+          <span>Mac 剪貼簿文字</span>
+          <button type="button" class="secondary btn-sm" id="btnRefresh">重新整理</button>
         </div>
         <textarea id="textFromMac" readonly placeholder="點擊重新整理或等待自動同步 Mac 剪貼簿..."></textarea>
-        <button type="button" class="secondary" id="btnCopyFromMac">📄 複製到本裝置</button>
+        <button type="button" class="secondary" id="btnCopyFromMac">複製到本機剪貼簿</button>
       </div>
 
-      <!-- 桌面端專屬 QR Code 卡片 -->
+      <!-- 桌面端 QR Code -->
       <div class="qr-card desktop-only" id="qrCard">
-        <div style="font-size: 13px; color: var(--subtext);">📱 手機相機掃描加入此剪貼簿：</div>
+        <div style="font-size: 13px; color: var(--subtext);">手機掃描以加入此剪貼簿：</div>
         <div class="code-block" id="currentUrl"></div>
         <img id="qrImage" alt="QR Code" />
       </div>
@@ -542,7 +543,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <script>
   const fullUrl = window.location.origin;
   document.getElementById('currentUrl').innerText = fullUrl;
-  document.getElementById('ipInfo').innerText = `連線至: ${fullUrl}`;
+  document.getElementById('ipInfo').innerText = `連線網址: ${fullUrl}`;
   document.getElementById('qrImage').src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(fullUrl);
 
   let currentImageFile = null;
@@ -557,7 +558,7 @@ HTML_PAGE = """<!DOCTYPE html>
     setTimeout(() => toast.classList.remove('show'), 2500);
   }
 
-  // --- 圖片處理 ---
+  // 圖片處理
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
   const previewBox = document.getElementById('previewBox');
@@ -580,7 +581,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (item.type.indexOf('image') === 0) {
         const file = item.getAsFile();
         handleImageFile(file);
-        showToast('📸 已自動偵測貼上的圖片');
+        showToast('已偵測到貼上的圖片');
         break;
       }
     }
@@ -601,7 +602,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
   function handleImageFile(file) {
     if (!file || !file.type.startsWith('image/')) {
-      showToast('請選擇圖片檔案', '#e11d48');
+      showToast('請選擇合法的圖片檔案', '#e11d48');
       return;
     }
     currentImageFile = file;
@@ -638,21 +639,21 @@ HTML_PAGE = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (data.ok) {
-        showToast('✅ 圖片已寫入 Mac 剪貼簿！(可直接 Cmd+V)');
+        showToast('圖片已寫入 Mac 剪貼簿 (Cmd + V 可直接貼上)');
         btnCancelImg.click();
         fetchLatestImage();
       } else {
-        showToast('❌ 傳送失敗: ' + (data.error || '未知錯誤'), '#e11d48');
+        showToast('傳送失敗: ' + (data.error || '未知錯誤'), '#e11d48');
       }
     } catch (err) {
-      showToast('❌ 傳送失敗，請檢查網路連線', '#e11d48');
+      showToast('傳送失敗，請檢查網路連線', '#e11d48');
     } finally {
       btnSendImg.disabled = false;
-      btnSendImg.innerText = '🚀 送圖片到 Mac';
+      btnSendImg.innerText = '傳送圖片至 Mac';
     }
   });
 
-  // --- 最新接收圖片展示 ---
+  // 最新接收圖片
   const cardLatestImg = document.getElementById('cardLatestImg');
   const receivedImg = document.getElementById('receivedImg');
   const receivedName = document.getElementById('receivedName');
@@ -691,14 +692,14 @@ HTML_PAGE = """<!DOCTYPE html>
     btnOpenFinder.addEventListener('click', async () => {
       try {
         await fetch('/api/open-finder', { method: 'POST' });
-        showToast('📂 已在 Mac 打開 Finder 資料夾');
+        showToast('已開啟 Finder 資料夾');
       } catch (e) {
         showToast('開啟失敗', '#e11d48');
       }
     });
   }
 
-  // --- 文字處理 ---
+  // 文字處理
   document.getElementById('btnSendText').addEventListener('click', async () => {
     const text = document.getElementById('textToSend').value;
     if (!text) {
@@ -713,13 +714,13 @@ HTML_PAGE = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (data.ok) {
-        showToast('✅ 已成功複製到 Mac 剪貼簿！');
+        showToast('文字已複製至 Mac 剪貼簿');
         fetchMacClipboard();
       } else {
-        showToast('❌ 同步失敗: ' + (data.error || '未知錯誤'), '#e11d48');
+        showToast('同步失敗: ' + (data.error || '未知錯誤'), '#e11d48');
       }
     } catch (err) {
-      showToast('❌ 連線錯誤', '#e11d48');
+      showToast('連線錯誤', '#e11d48');
     }
   });
 
@@ -728,7 +729,7 @@ HTML_PAGE = """<!DOCTYPE html>
       if (navigator.clipboard && navigator.clipboard.readText) {
         const clipText = await navigator.clipboard.readText();
         document.getElementById('textToSend').value = clipText;
-        showToast('已取得手機剪貼簿內容');
+        showToast('已取得剪貼簿內容');
       } else {
         document.getElementById('textToSend').focus();
         showToast('請長按輸入框選擇「貼上」', '#334155');
@@ -754,7 +755,7 @@ HTML_PAGE = """<!DOCTYPE html>
   document.getElementById('btnRefresh').addEventListener('click', () => {
     fetchMacClipboard();
     fetchLatestImage();
-    showToast('已刷新 Mac 狀態');
+    showToast('已刷新剪貼簿內容');
   });
 
   document.getElementById('btnCopyFromMac').addEventListener('click', async () => {
@@ -762,17 +763,15 @@ HTML_PAGE = """<!DOCTYPE html>
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      showToast('✅ 已複製到手機剪貼簿！');
+      showToast('已複製到本機剪貼簿');
     } catch (err) {
-      showToast('❌ 複製失敗，請手動全選複製', '#e11d48');
+      showToast('複製失敗，請手動全選複製', '#e11d48');
     }
   });
 
-  // 初次載入
   fetchMacClipboard();
   fetchLatestImage();
 
-  // 自動每 2.5 秒輪詢
   setInterval(() => {
     fetchLatestImage();
   }, 2500);
@@ -861,7 +860,7 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
                 content = data.get('content', '')
                 copy_text_to_macos_clipboard(content)
                 preview = (content[:50] + '...') if len(content) > 50 else content
-                print(f"\n⚡ [Mac 剪貼簿已更新文字]: {preview}\n")
+                print(f"\n[Mac 剪貼簿更新文字]: {preview}\n")
                 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -884,9 +883,9 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
                     raise ValueError("未接收到圖片數據")
                 
                 saved_path = copy_image_to_macos_clipboard(image_bytes)
-                print(f"\n🖼️  [Mac 剪貼簿已更新為圖片]: {os.path.basename(saved_path)} (原檔名: {original_filename})")
+                print(f"\n[Mac 剪貼簿更新圖片]: {os.path.basename(saved_path)} (原檔名: {original_filename})")
                 print(f"    檔案已保存至: {saved_path}")
-                print(f"    👉 您可直接在 Mac 任何應用程式按 Cmd + V 貼上！\n")
+                print(f"    Mac 任意應用程式按 Cmd + V 可直接貼上\n")
                 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -897,7 +896,7 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
                     'path': saved_path
                 }).encode('utf-8'))
             except Exception as e:
-                print(f"❌ 圖片處理失敗: {e}")
+                print(f"[錯誤] 圖片處理失敗: {e}")
                 self.send_response(500)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.end_headers()
@@ -927,14 +926,14 @@ def run_server(port: int = DEFAULT_PORT, auto_open: bool = False):
     
     url = f"http://{local_ip}:{port}"
     print("=" * 60)
-    print("🚀 跨裝置剪貼簿同步服務 (文字 & 圖片) 已啟動！")
+    print("跨裝置剪貼簿同步服務 (文字 & 圖片) 已啟動")
     print("=" * 60)
-    print(f"👉 請確保手機與 Mac 連接同一個 Wi-Fi")
-    print(f"👉 手機 Chrome 請開啟網址：\n   \033[1;32m{url}\033[0m")
-    print(f"👉 Mac 本機可開啟：\n   http://localhost:{port}")
-    print(f"📁 圖片將自動存放至：{DOWNLOADS_DIR}")
+    print(f"請確保手機與 Mac 連接同一個 Wi-Fi")
+    print(f"手機請開啟網址：\n   \033[1;32m{url}\033[0m")
+    print(f"Mac 本機可開啟：\n   http://localhost:{port}")
+    print(f"圖片儲存目錄：{DOWNLOADS_DIR}")
     print("=" * 60)
-    print("等待傳送中... (按 Ctrl + C 可隨時結束服務)\n")
+    print("等待連線中... (按 Ctrl + C 結束服務)\n")
 
     if auto_open:
         try:
@@ -951,7 +950,7 @@ def run_server(port: int = DEFAULT_PORT, auto_open: bool = False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Cross-device Clipboard Sync (Android/iOS ⇄ macOS)")
     parser.add_argument('-p', '--port', type=int, default=DEFAULT_PORT, help=f"服務監聽通訊埠 (預設: {DEFAULT_PORT})")
-    parser.add_argument('-o', '--open', action='store_true', help="啟動時自動在 Mac 瀏覽器開啟 QR Code 頁面")
+    parser.add_argument('-o', '--open', action='store_true', help="啟動時自動在 Mac 瀏覽器開啟頁面")
     args = parser.parse_args()
     
     run_server(port=args.port, auto_open=args.open)
