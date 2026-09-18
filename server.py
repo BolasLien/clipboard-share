@@ -12,6 +12,10 @@ from urllib.parse import parse_qs, unquote
 
 DEFAULT_PORT = 8000
 DOWNLOADS_DIR = os.path.expanduser('~/Downloads/ClipboardShare')
+PREVIEWS_DIR = '/tmp/clip_share_previews'
+
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+os.makedirs(PREVIEWS_DIR, exist_ok=True)
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -24,6 +28,20 @@ def get_local_ip():
         s.close()
     return ip
 
+def detect_image_extension(image_bytes: bytes) -> str:
+    """透過二進制 Magic Bytes 判斷真實副檔名"""
+    if len(image_bytes) >= 8 and image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+        return '.png'
+    if len(image_bytes) >= 3 and image_bytes[:3] == b'\xff\xd8\xff':
+        return '.jpg'
+    if len(image_bytes) >= 12 and image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+        return '.webp'
+    if len(image_bytes) >= 6 and (image_bytes[:6] in (b'GIF87a', b'GIF89a')):
+        return '.gif'
+    if len(image_bytes) >= 12 and image_bytes[4:8] == b'ftyp':
+        return '.heic'
+    return '.jpg'
+
 def copy_text_to_macos_clipboard(text: str):
     subprocess.run(['pbcopy'], input=text.encode('utf-8'), check=True)
 
@@ -33,45 +51,57 @@ def get_macos_clipboard() -> str:
     except Exception:
         return ""
 
-def copy_image_to_macos_clipboard(image_bytes: bytes, mime_type: str = 'image/png') -> str:
-    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+def ensure_web_preview(file_path: str) -> str:
+    """使用 macOS 內建 sips 產生所有瀏覽器 100% 支援的 JPEG 預覽圖"""
+    filename = os.path.basename(file_path)
+    preview_path = os.path.join(PREVIEWS_DIR, f"{filename}.preview.jpg")
+    
+    # 若預覽已存在且比原檔新，直接返回
+    if os.path.exists(preview_path) and os.path.getmtime(preview_path) >= os.path.getmtime(file_path):
+        return preview_path
+
+    try:
+        # 限制最大邊 1200px 轉為 JPEG，載入極快且相容 Chrome/Safari
+        subprocess.run(
+            ['sips', '-s', 'format', 'jpeg', '-Z', '1200', file_path, '--out', preview_path],
+            check=True,
+            capture_output=True
+        )
+        return preview_path
+    except Exception:
+        return file_path
+
+def copy_image_to_macos_clipboard(image_bytes: bytes) -> str:
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    
-    ext = '.png'
-    mime_lower = mime_type.lower()
-    if 'jpeg' in mime_lower or 'jpg' in mime_lower:
-        ext = '.jpg'
-    elif 'webp' in mime_lower:
-        ext = '.webp'
-    elif 'gif' in mime_lower:
-        ext = '.gif'
-    
-    filename = f"clip_{timestamp}{ext}"
+    real_ext = detect_image_extension(image_bytes)
+    filename = f"clip_{timestamp}{real_ext}"
     save_path = os.path.join(DOWNLOADS_DIR, filename)
+
     with open(save_path, 'wb') as f:
         f.write(image_bytes)
 
-    # 透過 macOS 內建 sips 轉為標準 PNG 寫入剪貼簿
-    tmp_png = '/tmp/clip_share_clipboard.png'
-    if ext == '.png':
-        with open(tmp_png, 'wb') as f:
-            f.write(image_bytes)
-    else:
-        try:
-            subprocess.run(['sips', '-s', 'format', 'png', save_path, '--out', tmp_png], check=True, capture_output=True)
-        except Exception:
-            with open(tmp_png, 'wb') as f:
-                f.write(image_bytes)
+    # 預先產生 Web 預覽圖
+    ensure_web_preview(save_path)
 
-    # 呼叫 macOS 內建 osascript 將 PNG 注入系統剪貼簿
-    script = f'set the clipboard to (read (POSIX file "{tmp_png}") as «class PNGf»)'
-    subprocess.run(['osascript', '-e', script], check=True)
+    # 將圖片轉為標準全尺寸 PNG 注入 macOS 系統剪貼簿
+    tmp_png = '/tmp/clip_share_clipboard.png'
+    try:
+        subprocess.run(
+            ['sips', '-s', 'format', 'png', save_path, '--out', tmp_png],
+            check=True,
+            capture_output=True
+        )
+        script = f'set the clipboard to (read (POSIX file "{tmp_png}") as «class PNGf»)'
+        subprocess.run(['osascript', '-e', script], check=True)
+    except Exception as e:
+        print(f"⚠️ 寫入剪貼簿警報: {e}")
+
     return save_path
 
 def get_latest_received_image():
     if not os.path.exists(DOWNLOADS_DIR):
         return None
-    valid_exts = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+    valid_exts = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.heic', '.heif'}
     files = [
         f for f in os.listdir(DOWNLOADS_DIR)
         if os.path.splitext(f)[1].lower() in valid_exts and not f.startswith('.')
@@ -87,7 +117,8 @@ def get_latest_received_image():
     mtime_str = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%H:%M:%S')
     return {
         "filename": latest,
-        "url": f"/images/{latest}",
+        "previewUrl": f"/preview/{latest}",
+        "rawUrl": f"/images/{latest}",
         "size": size_str,
         "mtime": mtime_str
     }
@@ -262,7 +293,7 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .received-img-box img {
       max-width: 100%;
-      max-height: 240px;
+      max-height: 260px;
       object-fit: contain;
       border-radius: 6px;
       cursor: pointer;
@@ -344,7 +375,7 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
       <div class="btn-group" style="width: 100%;">
         <button type="button" class="secondary" id="btnOpenFinder">📂 在 Finder 開啟</button>
-        <button type="button" id="btnViewFull">🔍 查看大圖</button>
+        <button type="button" id="btnViewFull">🔍 查看原圖</button>
       </div>
     </div>
   </div>
@@ -361,7 +392,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="dropzone" id="dropzone">
       <div style="font-size: 1.8rem;">📷</div>
       <div style="font-size: 14px; font-weight: 500;">點擊選擇相片、拍照或長按貼上</div>
-      <div style="font-size: 12px; color: var(--subtext);">支援 JPG、PNG、WebP、GIF、截圖等</div>
+      <div style="font-size: 12px; color: var(--subtext);">支援 JPG、PNG、HEIC、WebP、GIF、截圖等</div>
     </div>
 
     <div class="preview-box" id="previewBox">
@@ -417,6 +448,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
   let currentImageFile = null;
   let lastImageFilename = '';
+  let currentRawUrl = '';
 
   function showToast(msg, bg = '#059669') {
     const toast = document.getElementById('toast');
@@ -443,7 +475,6 @@ HTML_PAGE = """<!DOCTYPE html>
     }
   });
 
-  // 全域監聽 Paste 事件（支援截圖直接貼上）
   window.addEventListener('paste', (e) => {
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
     for (const item of items) {
@@ -456,7 +487,6 @@ HTML_PAGE = """<!DOCTYPE html>
     }
   });
 
-  // 拖曳上傳
   dropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropzone.classList.add('dragover');
@@ -502,8 +532,8 @@ HTML_PAGE = """<!DOCTYPE html>
       const res = await fetch('/api/image', {
         method: 'POST',
         headers: {
-          'Content-Type': currentImageFile.type || 'image/png',
-          'X-File-Name': encodeURIComponent(currentImageFile.name || 'image.png')
+          'Content-Type': currentImageFile.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(currentImageFile.name || 'image.jpg')
         },
         body: currentImageFile
       });
@@ -538,7 +568,8 @@ HTML_PAGE = """<!DOCTYPE html>
       if (data.exists) {
         if (data.filename !== lastImageFilename) {
           lastImageFilename = data.filename;
-          receivedImg.src = data.url;
+          currentRawUrl = data.rawUrl;
+          receivedImg.src = data.previewUrl;
           receivedName.innerText = data.filename;
           receivedMeta.innerText = `${data.size} (${data.mtime})`;
           cardLatestImg.style.display = 'flex';
@@ -550,11 +581,11 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   receivedImg.addEventListener('click', () => {
-    if (receivedImg.src) window.open(receivedImg.src, '_blank');
+    if (currentRawUrl) window.open(currentRawUrl, '_blank');
   });
 
   btnViewFull.addEventListener('click', () => {
-    if (receivedImg.src) window.open(receivedImg.src, '_blank');
+    if (currentRawUrl) window.open(currentRawUrl, '_blank');
   });
 
   btnOpenFinder.addEventListener('click', async () => {
@@ -640,7 +671,7 @@ HTML_PAGE = """<!DOCTYPE html>
   fetchMacClipboard();
   fetchLatestImage();
 
-  // 自動每 2.5 秒輪詢更新最新圖片與文字狀態（免手動重新整理）
+  // 自動每 2.5 秒輪詢
   setInterval(() => {
     fetchLatestImage();
   }, 2500);
@@ -677,6 +708,25 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             self.wfile.write(json.dumps(res).encode('utf-8'))
+        elif self.path.startswith('/preview/'):
+            filename = os.path.basename(unquote(self.path[len('/preview/'):]))
+            file_path = os.path.join(DOWNLOADS_DIR, filename)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                preview_file = ensure_web_preview(file_path)
+                try:
+                    with open(preview_file, 'rb') as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/jpeg')
+                    self.send_header('Content-Length', str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+                except Exception:
+                    self.send_response(500)
+                    self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
         elif self.path.startswith('/images/'):
             filename = os.path.basename(unquote(self.path[len('/images/'):]))
             file_path = os.path.join(DOWNLOADS_DIR, filename)
@@ -691,7 +741,7 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
                     self.send_header('Content-Length', str(len(content)))
                     self.end_headers()
                     self.wfile.write(content)
-                except Exception as e:
+                except Exception:
                     self.send_response(500)
                     self.end_headers()
             else:
@@ -724,8 +774,7 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
 
         elif self.path == '/api/image':
             content_length = int(self.headers.get('Content-Length', 0))
-            mime_type = self.headers.get('Content-Type', 'image/png')
-            raw_filename = self.headers.get('X-File-Name', 'image.png')
+            raw_filename = self.headers.get('X-File-Name', 'image.jpg')
             original_filename = unquote(raw_filename)
             
             try:
@@ -733,7 +782,7 @@ class ClipboardHandler(http.server.BaseHTTPRequestHandler):
                 if not image_bytes:
                     raise ValueError("未接收到圖片數據")
                 
-                saved_path = copy_image_to_macos_clipboard(image_bytes, mime_type)
+                saved_path = copy_image_to_macos_clipboard(image_bytes)
                 print(f"\n🖼️  [Mac 剪貼簿已更新為圖片]: {os.path.basename(saved_path)} (原檔名: {original_filename})")
                 print(f"    檔案已保存至: {saved_path}")
                 print(f"    👉 您可直接在 Mac 任何應用程式按 Cmd + V 貼上！\n")
