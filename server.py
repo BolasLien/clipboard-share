@@ -445,7 +445,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <!-- 發送區 -->
     <div class="section-column" id="colSend">
       <div class="section-header">
-        <span class="section-title title-send">發送端 (Send to Mac)</span>
+        <span class="section-title title-send">發送端 (Send)</span>
         <span class="badge">同步至剪貼簿</span>
       </div>
 
@@ -453,7 +453,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="card">
         <div class="card-title">
           <span>傳送圖片</span>
-          <span style="font-size: 12px; color: var(--subtext);">Mac 任意處 Cmd + V 貼圖</span>
+          <span style="font-size: 12px; color: var(--subtext);">支援貼上與拖曳圖片</span>
         </div>
         
         <input type="file" id="fileInput" accept="image/*" style="display: none;">
@@ -471,7 +471,7 @@ HTML_PAGE = """<!DOCTYPE html>
           </div>
           <div class="btn-group" style="width: 100%;">
             <button type="button" class="danger" style="flex: 0 0 70px;" id="btnCancelImg">清除</button>
-            <button type="button" id="btnSendImg">傳送圖片至 Mac</button>
+            <button type="button" id="btnSendImg">傳送圖片</button>
           </div>
         </div>
       </div>
@@ -480,12 +480,12 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="card">
         <div class="card-title">
           <span>傳送文字</span>
-          <span style="font-size: 12px; color: var(--subtext);">同步至 pbcopy</span>
+          <span style="font-size: 12px; color: var(--subtext);">同步至剪貼簿</span>
         </div>
         <textarea id="textToSend" placeholder="在此輸入文字，或長按貼上..."></textarea>
         <div class="btn-group">
           <button type="button" class="secondary" id="btnPasteText">讀取貼上</button>
-          <button type="button" id="btnSendText">傳送文字至 Mac</button>
+          <button type="button" id="btnSendText">傳送文字</button>
         </div>
       </div>
     </div>
@@ -493,7 +493,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <!-- 接收區 -->
     <div class="section-column" id="colRecv">
       <div class="section-header">
-        <span class="section-title title-recv">接收端 (Received on Mac)</span>
+        <span class="section-title title-recv">接收端 (Receive)</span>
         <span class="badge" style="background: #10b981;">即時更新</span>
       </div>
 
@@ -501,7 +501,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="card" id="cardLatestImg" style="display: none; border-color: #0284c7;">
         <div class="card-title">
           <span>最新接收圖片</span>
-          <span class="badge" style="background: #10b981;">已在 Mac 剪貼簿</span>
+          <span class="badge" style="background: #10b981;">已同步</span>
         </div>
         <div class="received-img-box">
           <img id="receivedImg" alt="最新圖片" title="點擊檢視原圖" />
@@ -516,19 +516,19 @@ HTML_PAGE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- Mac 剪貼簿文字 -->
+      <!-- 剪貼簿文字 -->
       <div class="card">
         <div class="card-title">
-          <span>Mac 剪貼簿文字</span>
+          <span>最新文字剪貼簿</span>
           <button type="button" class="secondary btn-sm" id="btnRefresh">重新整理</button>
         </div>
-        <textarea id="textFromMac" readonly placeholder="點擊重新整理或等待自動同步 Mac 剪貼簿..."></textarea>
+        <textarea id="textFromMac" readonly placeholder="點擊重新整理或等待自動同步剪貼簿..."></textarea>
         <button type="button" class="secondary" id="btnCopyFromMac">複製到本機剪貼簿</button>
       </div>
 
       <!-- 桌面端 QR Code -->
       <div class="qr-card desktop-only" id="qrCard">
-        <div style="font-size: 13px; color: var(--subtext);">手機掃描以加入此剪貼簿：</div>
+        <div style="font-size: 13px; color: var(--subtext);">掃描以加入此剪貼簿：</div>
         <div class="code-block" id="currentUrl"></div>
         <img id="qrImage" alt="QR Code" />
       </div>
@@ -641,7 +641,7 @@ HTML_PAGE = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (data.ok) {
-        showToast('圖片已寫入 Mac 剪貼簿 (Cmd + V 可直接貼上)');
+        showToast('圖片已成功傳送並同步');
         btnCancelImg.click();
         fetchLatestImage();
       } else {
@@ -651,7 +651,7 @@ HTML_PAGE = """<!DOCTYPE html>
       showToast('傳送失敗，請檢查網路連線', '#e11d48');
     } finally {
       btnSendImg.disabled = false;
-      btnSendImg.innerText = '傳送圖片至 Mac';
+      btnSendImg.innerText = '傳送圖片';
     }
   });
 
@@ -716,7 +716,7 @@ HTML_PAGE = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (data.ok) {
-        showToast('文字已複製至 Mac 剪貼簿');
+        showToast('文字已成功傳送並同步');
         fetchMacClipboard();
       } else {
         showToast('同步失敗: ' + (data.error || '未知錯誤'), '#e11d48');
@@ -747,7 +747,11 @@ HTML_PAGE = """<!DOCTYPE html>
       const res = await fetch('/api/clipboard');
       const data = await res.json();
       if (data.content !== undefined) {
-        document.getElementById('textFromMac').value = data.content || '';
+        const textarea = document.getElementById('textFromMac');
+        const newText = data.content || '';
+        if (textarea.value !== newText) {
+          textarea.value = newText;
+        }
       }
     } catch (err) {
       console.error(err);
@@ -776,6 +780,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
   setInterval(() => {
     fetchLatestImage();
+    fetchMacClipboard();
   }, 2500);
 </script>
 
