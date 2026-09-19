@@ -221,6 +221,8 @@ HTML_PAGE = """<!DOCTYPE html>
     }
     .title-send { color: var(--send-accent); }
     .title-recv { color: var(--recv-accent); }
+    .title-text { color: var(--send-accent); }
+    .title-img { color: var(--recv-accent); }
 
     .card {
       background-color: var(--card-bg);
@@ -365,6 +367,18 @@ HTML_PAGE = """<!DOCTYPE html>
       cursor: pointer;
       box-shadow: 0 4px 10px rgba(0,0,0,0.4);
     }
+    .empty-state {
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      padding: 32px 16px;
+      text-align: center;
+      background: #0b1120;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
     .toast {
       position: fixed;
       bottom: 24px;
@@ -442,17 +456,76 @@ HTML_PAGE = """<!DOCTYPE html>
 
   <div class="columns-container">
 
-    <!-- 發送區 -->
-    <div class="section-column" id="colSend">
+    <!-- 文字同步專區 -->
+    <div class="section-column" id="colText">
       <div class="section-header">
-        <span class="section-title title-send">發送端 (Send)</span>
-        <span class="badge">同步至剪貼簿</span>
+        <span class="section-title title-text">文字同步 (Text)</span>
+        <span class="badge">即時雙向</span>
       </div>
 
-      <!-- 圖片傳送 -->
+      <!-- 接收文字 (置頂) -->
       <div class="card">
         <div class="card-title">
-          <span>傳送圖片</span>
+          <span>接收剪貼簿文字</span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span class="badge" style="background: #10b981;">即時更新</span>
+            <button type="button" class="secondary btn-sm" id="btnRefresh">重新整理</button>
+          </div>
+        </div>
+        <textarea id="textFromMac" readonly placeholder="等待剪貼簿同步或點擊重新整理..."></textarea>
+        <button type="button" class="secondary" id="btnCopyFromMac">複製到本機剪貼簿</button>
+      </div>
+
+      <!-- 發送文字 (置底) -->
+      <div class="card">
+        <div class="card-title">
+          <span>發送文字</span>
+          <span style="font-size: 12px; color: var(--subtext);">同步至剪貼簿</span>
+        </div>
+        <textarea id="textToSend" placeholder="在此輸入文字，或長按貼上..."></textarea>
+        <div class="btn-group">
+          <button type="button" class="secondary" id="btnPasteText">讀取貼上</button>
+          <button type="button" id="btnSendText">傳送文字</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 圖片同步專區 -->
+    <div class="section-column" id="colImage">
+      <div class="section-header">
+        <span class="section-title title-img">圖片同步 (Image)</span>
+        <span class="badge" style="background: #10b981;">即時雙向</span>
+      </div>
+
+      <!-- 最新接收圖片 (置頂) -->
+      <div class="card" id="cardLatestImg">
+        <div class="card-title">
+          <span>最新接收圖片</span>
+          <span class="badge" style="background: #10b981;">即時更新</span>
+        </div>
+
+        <div class="empty-state" id="imgEmptyState">
+          <div style="font-size: 14px; color: var(--subtext);">尚無接收圖片</div>
+          <div style="font-size: 12px; color: #64748b;">接收到的圖片將自動顯示於此</div>
+        </div>
+
+        <div class="received-img-box" id="receivedImgBox" style="display: none;">
+          <img id="receivedImg" alt="最新圖片" title="點擊檢視原圖" />
+          <div class="preview-info">
+            <span id="receivedName" style="font-weight: 600; color: #38bdf8;"></span>
+            <span id="receivedMeta"></span>
+          </div>
+          <div class="btn-group" style="width: 100%;">
+            <button type="button" class="secondary desktop-only" id="btnOpenFinder">在 Finder 中開啟</button>
+            <button type="button" id="btnViewFull">檢視原圖</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 發送圖片 (置底) -->
+      <div class="card">
+        <div class="card-title">
+          <span>發送圖片</span>
           <span style="font-size: 12px; color: var(--subtext);">支援貼上與拖曳圖片</span>
         </div>
         
@@ -474,56 +547,6 @@ HTML_PAGE = """<!DOCTYPE html>
             <button type="button" id="btnSendImg">傳送圖片</button>
           </div>
         </div>
-      </div>
-
-      <!-- 文字傳送 -->
-      <div class="card">
-        <div class="card-title">
-          <span>傳送文字</span>
-          <span style="font-size: 12px; color: var(--subtext);">同步至剪貼簿</span>
-        </div>
-        <textarea id="textToSend" placeholder="在此輸入文字，或長按貼上..."></textarea>
-        <div class="btn-group">
-          <button type="button" class="secondary" id="btnPasteText">讀取貼上</button>
-          <button type="button" id="btnSendText">傳送文字</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 接收區 -->
-    <div class="section-column" id="colRecv">
-      <div class="section-header">
-        <span class="section-title title-recv">接收端 (Receive)</span>
-        <span class="badge" style="background: #10b981;">即時更新</span>
-      </div>
-
-      <!-- 最新接收圖片 -->
-      <div class="card" id="cardLatestImg" style="display: none; border-color: #0284c7;">
-        <div class="card-title">
-          <span>最新接收圖片</span>
-          <span class="badge" style="background: #10b981;">已同步</span>
-        </div>
-        <div class="received-img-box">
-          <img id="receivedImg" alt="最新圖片" title="點擊檢視原圖" />
-          <div class="preview-info">
-            <span id="receivedName" style="font-weight: 600; color: #38bdf8;"></span>
-            <span id="receivedMeta"></span>
-          </div>
-          <div class="btn-group" style="width: 100%;">
-            <button type="button" class="secondary desktop-only" id="btnOpenFinder">在 Finder 中開啟</button>
-            <button type="button" id="btnViewFull">檢視原圖</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 剪貼簿文字 -->
-      <div class="card">
-        <div class="card-title">
-          <span>最新文字剪貼簿</span>
-          <button type="button" class="secondary btn-sm" id="btnRefresh">重新整理</button>
-        </div>
-        <textarea id="textFromMac" readonly placeholder="點擊重新整理或等待自動同步剪貼簿..."></textarea>
-        <button type="button" class="secondary" id="btnCopyFromMac">複製到本機剪貼簿</button>
       </div>
 
       <!-- 桌面端 QR Code -->
@@ -657,6 +680,8 @@ HTML_PAGE = """<!DOCTYPE html>
 
   // 最新接收圖片
   const cardLatestImg = document.getElementById('cardLatestImg');
+  const imgEmptyState = document.getElementById('imgEmptyState');
+  const receivedImgBox = document.getElementById('receivedImgBox');
   const receivedImg = document.getElementById('receivedImg');
   const receivedName = document.getElementById('receivedName');
   const receivedMeta = document.getElementById('receivedMeta');
@@ -674,8 +699,12 @@ HTML_PAGE = """<!DOCTYPE html>
           receivedImg.src = data.previewUrl;
           receivedName.innerText = data.filename;
           receivedMeta.innerText = `${data.size} (${data.mtime})`;
-          cardLatestImg.style.display = 'flex';
         }
+        if (imgEmptyState) imgEmptyState.style.display = 'none';
+        if (receivedImgBox) receivedImgBox.style.display = 'flex';
+      } else {
+        if (imgEmptyState) imgEmptyState.style.display = 'flex';
+        if (receivedImgBox) receivedImgBox.style.display = 'none';
       }
     } catch (err) {
       console.error(err);
